@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Project } from '../types/electrical';
 import { 
-  importExportManager, 
+  ImportExportManager, 
   ImportOptions, 
   ExportOptions, 
   ImportResult, 
@@ -48,7 +48,7 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
   const [importOptions, setImportOptions] = useState<ImportOptions>({
     format: 'pdf',
     quality: 'medium',
-    maxSize: 10,
+    maxSize: 50, // Augmenté pour les PDFs
     autoResize: true,
     targetWidth: 1920,
     targetHeight: 1080
@@ -67,6 +67,9 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
 
   const [useCase, setUseCase] = useState<'web' | 'print' | 'archive'>('print');
 
+  // Instance du manager
+  const importExportManager = ImportExportManager.getInstance();
+
   // Reset state when dialog opens/closes
   React.useEffect(() => {
     if (isOpen) {
@@ -79,9 +82,67 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
 
   // Apply recommended settings based on use case
   const applyRecommendedSettings = useCallback((newUseCase: 'web' | 'print' | 'archive') => {
-    const recommended = importExportManager.getRecommendedSettings(newUseCase);
-    setImportOptions(recommended.import);
-    setExportOptions(recommended.export);
+    // Configuration recommandée selon l'usage
+    const settings = {
+      web: {
+        import: {
+          format: 'jpg' as const,
+          quality: 'medium' as const,
+          maxSize: 10,
+          autoResize: true,
+          targetWidth: 1920,
+          targetHeight: 1080
+        },
+        export: {
+          format: 'jpg' as const,
+          quality: 0.8,
+          resolution: 72,
+          includeBackground: true,
+          paperSize: 'A4' as const,
+          orientation: 'landscape' as const,
+          margins: { top: 10, right: 10, bottom: 10, left: 10 }
+        }
+      },
+      print: {
+        import: {
+          format: 'pdf' as const,
+          quality: 'high' as const,
+          maxSize: 50,
+          autoResize: false,
+          targetWidth: 2480,
+          targetHeight: 3508
+        },
+        export: {
+          format: 'pdf' as const,
+          quality: 0.95,
+          resolution: 300,
+          includeBackground: true,
+          paperSize: 'A4' as const,
+          orientation: 'landscape' as const,
+          margins: { top: 15, right: 15, bottom: 15, left: 15 }
+        }
+      },
+      archive: {
+        import: {
+          format: 'png' as const,
+          quality: 'high' as const,
+          maxSize: 100,
+          autoResize: false
+        },
+        export: {
+          format: 'png' as const,
+          quality: 1.0,
+          resolution: 300,
+          includeBackground: true,
+          paperSize: 'A4' as const,
+          orientation: 'landscape' as const,
+          margins: { top: 20, right: 20, bottom: 20, left: 20 }
+        }
+      }
+    };
+
+    setImportOptions(settings[newUseCase].import);
+    setExportOptions(settings[newUseCase].export);
     setUseCase(newUseCase);
   }, []);
 
@@ -151,6 +212,23 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
     }
   }, [project, canvasElement, exportOptions]);
 
+  // Render PDF specific options
+  const renderPDFSpecificOptions = () => {
+    if (importOptions.format !== 'pdf') return null;
+    
+    return (
+      <div className="mt-4 p-3 bg-blue-900/30 rounded border border-blue-600">
+        <h4 className="text-sm font-medium text-blue-300 mb-2">Options PDF</h4>
+        <div className="text-xs text-blue-200 space-y-1">
+          <p>• Les PDFs multi-pages seront importés (première page utilisée)</p>
+          <p>• Qualité recommandée: Moyenne ou Élevée</p>
+          <p>• Taille max recommandée: 50MB</p>
+          <p>• Les PDFs protégés ne sont pas supportés</p>
+        </div>
+      </div>
+    );
+  };
+
   // Render preview
   const renderPreview = () => {
     if (!previewData) return null;
@@ -164,39 +242,95 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
           Aperçu {previews.length > 1 ? `(${previews.length} pages)` : ''}
         </h4>
         <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
-          {previews.map((dataUrl, index) => (
+          {previews.slice(0, 3).map((preview, index) => (
             <div key={index} className="relative">
               <img 
-                src={dataUrl} 
+                src={preview} 
                 alt={`Aperçu ${index + 1}`}
-                className="w-full h-auto max-h-32 object-contain bg-white rounded border"
+                className="w-full h-32 object-contain bg-gray-800 rounded border border-gray-600"
               />
               {previews.length > 1 && (
-                <span className="absolute top-1 left-1 bg-black bg-opacity-75 text-white text-xs px-1 rounded">
+                <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
                   Page {index + 1}
-                </span>
+                </div>
               )}
             </div>
           ))}
+          {previews.length > 3 && (
+            <div className="text-xs text-gray-400 text-center py-2">
+              ... et {previews.length - 3} page(s) supplémentaire(s)
+            </div>
+          )}
         </div>
       </div>
     );
+  };
+
+  // Render result with enhanced PDF feedback
+  const renderResult = () => {
+    if (!result) return null;
+
+    if (result.success) {
+      const message = 'metadata' in result && result.metadata?.pageCount 
+        ? `Import réussi ! ${result.metadata.pageCount} page(s) trouvée(s) dans le PDF.`
+        : mode === 'import' ? 'Import réussi !' : 'Export réussi !';
+        
+      return (
+        <div className="mt-4 p-3 bg-green-900/30 rounded border border-green-600">
+          <div className="flex items-center text-green-300">
+            <CheckCircle className="w-4 h-4 mr-2" />
+            {message}
+          </div>
+          {'metadata' in result && result.metadata?.pageCount && result.metadata.pageCount > 1 && (
+            <p className="text-xs text-green-200 mt-1">
+              Première page importée. Les autres pages peuvent être importées séparément si nécessaire.
+            </p>
+          )}
+          {mode === 'export' && 'fileName' in result && result.fileName && (
+            <p className="text-xs text-green-200 mt-1">
+              Fichier sauvegardé : {result.fileName}
+            </p>
+          )}
+        </div>
+      );
+    } else {
+      return (
+        <div className="mt-4 p-3 bg-red-900/30 rounded border border-red-600">
+          <div className="flex items-center text-red-300">
+            <AlertCircle className="w-4 h-4 mr-2" />
+            Erreur: {result.error}
+          </div>
+          {result.error?.includes('PDF') && (
+            <div className="text-xs text-red-200 mt-2">
+              <p>Solutions possibles :</p>
+              <ul className="list-disc list-inside ml-2 space-y-1">
+                <li>Vérifiez que le PDF n'est pas corrompu</li>
+                <li>Essayez de convertir le PDF en image (JPG/PNG)</li>
+                <li>Réduisez la taille du fichier si nécessaire</li>
+                <li>Rechargez la page et réessayez</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      );
+    }
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+      <div className="bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             {mode === 'import' ? (
               <Upload className="w-5 h-5 text-blue-400" />
             ) : (
               <Download className="w-5 h-5 text-green-400" />
             )}
             <h2 className="text-lg font-semibold text-white">
-              {mode === 'import' ? 'Importer un Plan' : 'Exporter le Plan'}
+              {mode === 'import' ? 'Importer un plan' : 'Exporter le plan'}
             </h2>
           </div>
           <button
@@ -207,27 +341,28 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto max-h-[calc(90vh-80px)]">
+        {/* Content */}
+        <div className="p-4 max-h-[calc(90vh-120px)] overflow-y-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Settings Panel */}
             <div className="space-y-4">
-              <div className="flex items-center space-x-2 mb-4">
-                <Settings className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-medium text-gray-300">Paramètres</h3>
-              </div>
+              <h3 className="text-sm font-medium text-gray-300 flex items-center">
+                <Settings className="w-4 h-4 mr-2" />
+                Paramètres
+              </h3>
 
               {/* Use Case Presets */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Utilisation recommandée
+                  Utilisation
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['web', 'print', 'archive'] as const).map((preset) => (
                     <button
                       key={preset}
                       onClick={() => applyRecommendedSettings(preset)}
-                      className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                        useCase === preset
+                      className={`px-3 py-2 text-xs rounded transition-colors ${
+                        useCase === preset 
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
@@ -253,10 +388,11 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
                       }))}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
                     >
-                      <option value="pdf">PDF</option>
-                      <option value="jpg">JPG</option>
-                      <option value="png">PNG</option>
+                      <option value="pdf">PDF (Plans architecturaux)</option>
+                      <option value="jpg">JPG (Photos/Images)</option>
+                      <option value="png">PNG (Images avec transparence)</option>
                     </select>
+                    {renderPDFSpecificOptions()}
                   </div>
 
                   <div>
@@ -355,9 +491,9 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
                       }))}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
                     >
-                      <option value="pdf">PDF</option>
-                      <option value="jpg">JPG</option>
-                      <option value="png">PNG</option>
+                      <option value="pdf">PDF (Document)</option>
+                      <option value="jpg">JPG (Image)</option>
+                      <option value="png">PNG (Image avec transparence)</option>
                     </select>
                   </div>
 
@@ -373,10 +509,10 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
                       }))}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
                     >
-                      <option value={72}>72 DPI (Web)</option>
-                      <option value={150}>150 DPI (Standard)</option>
-                      <option value={300}>300 DPI (Impression)</option>
-                      <option value={600}>600 DPI (Haute qualité)</option>
+                      <option value="72">72 DPI (Web)</option>
+                      <option value="150">150 DPI (Prévisualisation)</option>
+                      <option value="300">300 DPI (Impression)</option>
+                      <option value="600">600 DPI (Haute qualité)</option>
                     </select>
                   </div>
 
@@ -442,10 +578,10 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
                         <label className="block text-sm font-medium text-gray-300 mb-2">
                           Marges (mm)
                         </label>
-                        <div className="grid grid-cols-4 gap-1">
+                        <div className="grid grid-cols-2 gap-2">
                           {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
                             <div key={side}>
-                              <label className="block text-xs text-gray-400 mb-1 capitalize">
+                              <label className="block text-xs text-gray-400 mb-1">
                                 {side === 'top' ? 'Haut' : side === 'right' ? 'Droite' : side === 'bottom' ? 'Bas' : 'Gauche'}
                               </label>
                               <input
@@ -491,40 +627,44 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
             <div className="space-y-4">
               {mode === 'import' ? (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Sélectionner un fichier
-                    </label>
-                    <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                      />
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex flex-col items-center space-y-2 text-gray-400 hover:text-gray-300 transition-colors"
-                      >
-                        <Upload className="w-8 h-8" />
-                        <span className="text-sm">
-                          Cliquez pour sélectionner un fichier
-                        </span>
-                        <span className="text-xs">
-                          PDF, JPG, PNG (max {importOptions.maxSize}MB)
-                        </span>
-                      </button>
-                    </div>
+                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
                     
-                    {selectedFile && (
-                      <div className="mt-2 p-2 bg-gray-700 rounded text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-300">{selectedFile.name}</span>
-                          <span className="text-gray-400">
-                            {(selectedFile.size / 1024 / 1024).toFixed(1)} MB
-                          </span>
+                    {selectedFile ? (
+                      <div className="space-y-2">
+                        <FileText className="w-8 h-8 text-blue-400 mx-auto" />
+                        <div className="text-sm text-gray-300">{selectedFile.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {(selectedFile.size / 1024 / 1024).toFixed(1)} MB
                         </div>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-xs text-blue-400 hover:text-blue-300"
+                        >
+                          Changer le fichier
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload className="w-8 h-8 text-gray-400 mx-auto" />
+                        <div className="text-sm text-gray-300">
+                          Cliquez pour sélectionner un fichier
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          PDF, JPG, PNG (max {importOptions.maxSize}MB)
+                        </div>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-blue-400 hover:text-blue-300 text-sm"
+                        >
+                          Parcourir
+                        </button>
                       </div>
                     )}
                   </div>
@@ -580,57 +720,7 @@ const ImportExportDialog: React.FC<ImportExportDialogProps> = ({
               )}
 
               {/* Result Display */}
-              {result && (
-                <div className={`p-3 rounded-lg ${
-                  result.success ? 'bg-green-900/20 border border-green-700/30' : 'bg-red-900/20 border border-red-700/30'
-                }`}>
-                  <div className="flex items-center space-x-2 mb-2">
-                    {result.success ? (
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-400" />
-                    )}
-                    <span className={`text-sm font-medium ${
-                      result.success ? 'text-green-300' : 'text-red-300'
-                    }`}>
-                      {result.success ? 'Succès' : 'Erreur'}
-                    </span>
-                  </div>
-                  
-                  {result.success ? (
-                    <div className="text-sm text-gray-300">
-                      {mode === 'import' ? (
-                        <>
-                          <div>Fichier importé avec succès</div>
-                          {'metadata' in result && result.metadata && (
-                            <div className="text-xs text-gray-400 mt-1">
-                              {result.metadata.pageCount && (
-                                <div>Pages: {result.metadata.pageCount}</div>
-                              )}
-                              <div>
-                                Taille: {(result.metadata.fileSize / 1024 / 1024).toFixed(1)} MB
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div>Fichier exporté: {'fileName' in result && result.fileName}</div>
-                          {'fileSize' in result && result.fileSize && (
-                            <div className="text-xs text-gray-400 mt-1">
-                              Taille: {(result.fileSize / 1024 / 1024).toFixed(1)} MB
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-red-300">
-                      {result.error}
-                    </div>
-                  )}
-                </div>
-              )}
+              {renderResult()}
 
               {/* Preview */}
               {mode === 'import' && renderPreview()}

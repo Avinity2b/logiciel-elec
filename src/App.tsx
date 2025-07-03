@@ -21,6 +21,8 @@ import { calculateCircuits } from './utils/nfc15100';
 import { generateSchematic } from './utils/schematicGenerator';
 import { exportProject } from './utils/exportUtils';
 import { exportPlan, ExportSettings } from './utils/planExporter';
+import { ImportExportManager } from './utils/importExportManager';
+const importExportManager = ImportExportManager.getInstance();
 
 function App() {
   const stageRef = useRef<any>(null);
@@ -148,72 +150,105 @@ function App() {
     }
   }, [project, exportZone]);
 
-  const handleImportPlan = useCallback((file: File) => {
-    const fileType = file.type;
-    const fileName = file.name.toLowerCase();
-    
-    if (fileType.startsWith('image/') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png') || fileName.endsWith('.gif') || fileName.endsWith('.bmp') || fileName.endsWith('.webp')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setProject(prev => ({
-          ...prev,
-          backgroundImage: result
-        }));
-        setShowPlanAnalysis(true);
-      };
-      reader.readAsDataURL(file);
-    } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-      handlePDFImport(file);
-    } else if (fileName.endsWith('.dwg')) {
-      alert('Les fichiers DWG ne sont pas encore supportés. Veuillez convertir votre fichier en PDF ou image.');
-    } else {
-      alert('Format de fichier non supporté. Formats acceptés: PDF, JPG, PNG, GIF, BMP, WebP, DWG');
-    }
-  }, []);
+  const handleImportPlan = useCallback(async (file: File) => {
+  const fileType = file.type;
+  const fileName = file.name.toLowerCase();
+  
+  if (fileType.startsWith('image/') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png') || fileName.endsWith('.gif') || fileName.endsWith('.bmp') || fileName.endsWith('.webp')) {
+    // Import direct des images
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setProject(prev => ({
+        ...prev,
+        backgroundImage: result
+      }));
+      setShowPlanAnalysis(true);
+    };
+    reader.readAsDataURL(file);
+  } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+    // Utiliser le vrai système d'import PDF
+    await handlePDFImport(file);
+  } else if (fileName.endsWith('.dwg')) {
+    alert('Les fichiers DWG ne sont pas encore supportés. Veuillez convertir votre fichier en PDF ou image.');
+  } else {
+    alert('Format de fichier non supporté. Formats acceptés: PDF, JPG, PNG, GIF, BMP, WebP, DWG');
+  }
+}, []);
 
   const handlePDFImport = useCallback(async (file: File) => {
-    try {
-      const pdfUrl = URL.createObjectURL(file);
+  try {
+    setIsCalculating(true); // Montrer le loader
+    
+    // Options d'import pour PDF
+    const importOptions = {
+      format: 'pdf' as const,
+      quality: 'medium' as const,
+      maxSize: 50, // 50MB max
+      autoResize: true,
+      targetWidth: 1920,
+      targetHeight: 1080
+    };
+
+    // Utiliser l'ImportExportManager pour traiter le PDF
+    const result = await importExportManager.importFile(file, importOptions);
+    
+    if (result.success && result.data) {
+      // Si c'est un PDF multi-pages, prendre la première page
+      const imageData = Array.isArray(result.data) ? result.data[0] : result.data;
+      
+      setProject(prev => ({
+        ...prev,
+        backgroundImage: imageData
+      }));
+      setShowPlanAnalysis(true);
+      
+      // Afficher un message de succès
+      alert(`PDF importé avec succès ! ${result.metadata?.pageCount ? `(${result.metadata.pageCount} page(s) trouvée(s), première page utilisée)` : ''}`);
+    } else {
+      throw new Error(result.error || 'Erreur inconnue lors de l\'import PDF');
+    }
+    
+  } catch (error) {
+    console.error('Erreur lors de l\'importation du PDF:', error);
+    
+    // Fallback vers l'ancienne méthode en cas d'erreur
+    const shouldUseFallback = confirm(
+      `Erreur lors de l'import PDF automatique: ${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n` +
+      'Voulez-vous utiliser un placeholder temporaire ? (Sinon, veuillez convertir votre PDF en image JPG/PNG)'
+    );
+    
+    if (shouldUseFallback) {
+      // Créer un placeholder
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
-      const shouldConvert = confirm(
-        'Pour importer un PDF, veuillez le convertir en image (JPG/PNG) en utilisant un outil en ligne ou en prenant une capture d\'écran.\n\n' +
-        'Voulez-vous continuer avec un fond blanc en attendant ?'
-      );
-      
-      if (shouldConvert) {
-        canvas.width = 800;
-        canvas.height = 600;
-        if (ctx) {
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          ctx.fillStyle = '#666';
-          ctx.font = '20px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText('Plan PDF importé', canvas.width / 2, canvas.height / 2 - 20);
-          ctx.font = '14px Arial';
-          ctx.fillText('Convertissez votre PDF en image pour un meilleur rendu', canvas.width / 2, canvas.height / 2 + 10);
-          ctx.fillText(`Fichier: ${file.name}`, canvas.width / 2, canvas.height / 2 + 30);
-        }
+      canvas.width = 800;
+      canvas.height = 600;
+      if (ctx) {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        const dataUrl = canvas.toDataURL('image/png');
-        setProject(prev => ({
-          ...prev,
-          backgroundImage: dataUrl
-        }));
-        setShowPlanAnalysis(true);
+        ctx.fillStyle = '#666';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Plan PDF (placeholder)', canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = '14px Arial';
+        ctx.fillText('Convertissez votre PDF en image pour un meilleur rendu', canvas.width / 2, canvas.height / 2 + 10);
+        ctx.fillText(`Fichier: ${file.name}`, canvas.width / 2, canvas.height / 2 + 30);
       }
       
-      URL.revokeObjectURL(pdfUrl);
-      
-    } catch (error) {
-      console.error('Erreur lors de l\'importation du PDF:', error);
-      alert('Erreur lors de l\'importation du PDF. Veuillez convertir le fichier en image (JPG/PNG).');
+      const dataUrl = canvas.toDataURL('image/png');
+      setProject(prev => ({
+        ...prev,
+        backgroundImage: dataUrl
+      }));
+      setShowPlanAnalysis(true);
     }
-  }, []);
+  } finally {
+    setIsCalculating(false); // Cacher le loader
+  }
+}, []);
 
   const handleAnalysisComplete = useCallback((result: PlanAnalysisResult) => {
     setPlanAnalysisResult(result);
