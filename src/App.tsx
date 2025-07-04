@@ -250,188 +250,208 @@ function App() {
   }
 }, []);
 
-  const handleAnalysisComplete = useCallback((result: PlanAnalysisResult) => {
-    setPlanAnalysisResult(result);
+  // AJOUT : Gestionnaire pour l'import avancé depuis Header
+  const handleAdvancedImportComplete = useCallback((imageData: string) => {
+    console.log('=== IMPORT AVANCÉ DANS APP.tsx ===');
+    console.log('Réception des données d\'image...');
     
-    const analysisBasedSuggestions = [
-      `${result.rooms.length} pièces détectées - Vérifier les besoins électriques`,
-      `${result.doors.length} portes identifiées - Prévoir l'éclairage des passages`,
-      `Analyse terminée avec ${Math.round(result.confidence)}% de confiance`
-    ];
+    setProject(prev => {
+      const updatedProject = {
+        ...prev,
+        backgroundImage: imageData
+      };
+      console.log('Projet mis à jour avec backgroundImage');
+      return updatedProject;
+    });
     
-    setAiSuggestions(prev => [...prev, ...analysisBasedSuggestions]);
-  }, []);
+    // Activer l'analyse du plan
+  setShowPlanAnalysis(true);
+  console.log('Analyse du plan activée');
+}, []);
 
-  const handleToggleElementVisibility = useCallback((elementType: string, visible: boolean) => {
-    console.log(`Toggle ${elementType} visibility: ${visible}`);
-  }, []);
+const handleAnalysisComplete = useCallback((result: PlanAnalysisResult) => {
+  setPlanAnalysisResult(result);
+  
+  const analysisBasedSuggestions = [
+    `${result.rooms.length} pièces détectées - Vérifier les besoins électriques`,
+    `${result.doors.length} portes identifiées - Prévoir l'éclairage des passages`,
+    `Analyse terminée avec ${Math.round(result.confidence)}% de confiance`
+  ];
+  
+  setAiSuggestions(prev => [...prev, ...analysisBasedSuggestions]);
+}, []);
 
-  const handleSettingsChange = useCallback((settings: ProjectSettings) => {
-    setProject(prev => ({
-      ...prev,
-      settings
-    }));
-  }, []);
+const handleToggleElementVisibility = useCallback((elementType: string, visible: boolean) => {
+  console.log(`Toggle ${elementType} visibility: ${visible}`);
+}, []);
 
-  const handleToggleConnections = useCallback(() => {
-    setShowConnections(prev => !prev);
-  }, []);
+const handleSettingsChange = useCallback((settings: ProjectSettings) => {
+  setProject(prev => ({
+    ...prev,
+    settings
+  }));
+}, []);
 
-  const handleLoadProject = useCallback((loadedProject: Project) => {
-    setProject(loadedProject);
-    setSelectedElements([]);
-    setAiSuggestions([]);
-    setPlanAnalysisResult(null);
-  }, []);
+const handleToggleConnections = useCallback(() => {
+  setShowConnections(prev => !prev);
+}, []);
 
-  const handleElementFound = useCallback((elementId: string) => {
-    const element = project.elements.find(el => el.id === elementId);
-    if (element) {
-      setSelectedElements([element]);
-      // Center view on element (would need canvas reference)
-      // For now, just select it
-    }
-  }, [project.elements]);
+const handleLoadProject = useCallback((loadedProject: Project) => {
+  setProject(loadedProject);
+  setSelectedElements([]);
+  setAiSuggestions([]);
+  setPlanAnalysisResult(null);
+}, []);
 
-  const handleSelectTemplate = useCallback((templateProject: Project) => {
-    setProject(templateProject);
-    setSelectedElements([]);
-    setAiSuggestions([]);
-    setPlanAnalysisResult(null);
-  }, []);
+const handleElementFound = useCallback((elementId: string) => {
+  const element = project.elements.find(el => el.id === elementId);
+  if (element) {
+    setSelectedElements([element]);
+    // Center view on element (would need canvas reference)
+    // For now, just select it
+  }
+}, [project.elements]);
 
-  const handleUpdateProject = useCallback((updatedProject: Project) => {
-    setProject(updatedProject);
-  }, []);
+const handleSelectTemplate = useCallback((templateProject: Project) => {
+  setProject(templateProject);
+  setSelectedElements([]);
+  setAiSuggestions([]);
+  setPlanAnalysisResult(null);
+}, []);
 
-  return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="h-screen bg-gray-900 text-white flex flex-col">
-        <Header 
-          project={project}
-          onImportPlan={handleImportPlan}
-          onExportProject={handleExportProject}
-          onCalculateCircuits={handleCalculateCircuits}
-          isCalculating={isCalculating}
-          onTogglePlanAnalysis={() => setShowPlanAnalysis(!showPlanAnalysis)}
-          showPlanAnalysis={showPlanAnalysis}
-          onOpenSettings={() => setShowSettings(true)}
-          onToggleConnections={handleToggleConnections}
-          showConnections={showConnections}
-          onExportPlan={handleExportPlan}
-          onOpenProjectManager={() => setShowProjectManager(true)}
-          onOpenSearch={() => setShowSearch(true)}
-          onOpenPlanTemplates={() => setShowPlanTemplates(true)}
-          onOpenElectricalPanel={() => setShowElectricalPanel(true)}
-          onOpenQuoteGenerator={() => setShowQuoteGenerator(true)}
-        />
+const handleUpdateProject = useCallback((updatedProject: Project) => {
+  setProject(updatedProject);
+}, []);
+
+return (
+  <DndProvider backend={HTML5Backend}>
+    <div className="h-screen bg-gray-900 text-white flex flex-col">
+      <Header 
+        project={project}
+        onImportPlan={handleImportPlan}
+        onExportProject={handleExportProject}
+        onCalculateCircuits={handleCalculateCircuits}
+        isCalculating={isCalculating}
+        onTogglePlanAnalysis={() => setShowPlanAnalysis(!showPlanAnalysis)}
+        showPlanAnalysis={showPlanAnalysis}
+        onOpenSettings={() => setShowSettings(true)}
+        onToggleConnections={handleToggleConnections}
+        showConnections={showConnections}
+        onExportPlan={handleExportPlan}
+        onOpenProjectManager={() => setShowProjectManager(true)}
+        onOpenSearch={() => setShowSearch(true)}
+        onOpenPlanTemplates={() => setShowPlanTemplates(true)}
+        onOpenElectricalPanel={() => setShowElectricalPanel(true)}
+        onOpenQuoteGenerator={() => setShowQuoteGenerator(true)}
+        onAdvancedImportComplete={handleAdvancedImportComplete}
+      />
+      
+      <div className="flex-1 flex overflow-hidden">
+        <NewToolbar onAddElement={handleAddElement} />
         
-        <div className="flex-1 flex overflow-hidden">
-          <NewToolbar onAddElement={handleAddElement} />
+        <div className="flex-1 flex flex-col relative">
+          <Canvas
+            ref={stageRef}
+            project={project}
+            selectedElements={selectedElements}
+            onSelectElements={setSelectedElements}
+            onUpdateElement={handleUpdateElement}
+            onDeleteElements={handleDeleteElements}
+            onAddElement={handleAddElement}
+            onAddConnection={handleAddConnection}
+            onDeleteConnection={handleDeleteConnection}
+            planAnalysisResult={planAnalysisResult}
+            showConnections={showConnections}
+          />
           
-          <div className="flex-1 flex flex-col relative">
-            <Canvas
-              ref={stageRef}
-              project={project}
-              selectedElements={selectedElements}
-              onSelectElements={setSelectedElements}
-              onUpdateElement={handleUpdateElement}
-              onDeleteElements={handleDeleteElements}
-              onAddElement={handleAddElement}
-              onAddConnection={handleAddConnection}
-              onDeleteConnection={handleDeleteConnection}
-              planAnalysisResult={planAnalysisResult}
-              showConnections={showConnections}
+          {showExportZone && (
+            <ExportZoneSelector
+              canvasWidth={800}
+              canvasHeight={600}
+              onZoneChange={setExportZone}
+              initialZone={exportZone}
             />
-            
-            {showExportZone && (
-              <ExportZoneSelector
-                canvasWidth={800}
-                canvasHeight={600}
-                onZoneChange={setExportZone}
-                initialZone={exportZone}
-              />
-            )}
-            
-            <StatusBar 
-              elementCount={project.elements.length}
-              circuitCount={project.circuits.length}
-              connectionCount={project.connections.length}
-              aiSuggestions={aiSuggestions}
-            />
-          </div>
+          )}
           
-          <div className="flex">
-            <PropertiesPanel
-              selectedElements={selectedElements}
-              onUpdateElement={handleUpdateElement}
-              onExportSchematic={handleExportSchematic}
-              calculations={project.calculations}
-              project={project}
-            />
-            
-            {showPlanAnalysis && (
-              <PlanAnalysisPanel
-                backgroundImage={project.backgroundImage}
-                onAnalysisComplete={handleAnalysisComplete}
-                onToggleElementVisibility={handleToggleElementVisibility}
-                analysisResult={planAnalysisResult}
-              />
-            )}
-
-            {showSearch && (
-              <SearchPanel
-                project={project}
-                onElementFound={handleElementFound}
-                onClose={() => setShowSearch(false)}
-              />
-            )}
-          </div>
+          <StatusBar 
+            elementCount={project.elements.length}
+            circuitCount={project.circuits.length}
+            connectionCount={project.connections.length}
+            aiSuggestions={aiSuggestions}
+          />
         </div>
-
-        {showSettings && (
-          <SettingsPanel
-            settings={project.settings || {
-              selectedWallSeries: {},
-              selectedModularSeries: {}
-            }}
-            onSettingsChange={handleSettingsChange}
-            onClose={() => setShowSettings(false)}
-          />
-        )}
-
-        {showProjectManager && (
-          <ProjectManager
-            onLoadProject={handleLoadProject}
-            onClose={() => setShowProjectManager(false)}
-            currentProject={project}
-          />
-        )}
-
-        {showPlanTemplates && (
-          <PlanTemplates
-            onSelectTemplate={handleSelectTemplate}
-            onClose={() => setShowPlanTemplates(false)}
-          />
-        )}
-
-        {showElectricalPanel && (
-          <ElectricalPanel
+        
+        <div className="flex">
+          <PropertiesPanel
+            selectedElements={selectedElements}
+            onUpdateElement={handleUpdateElement}
+            onExportSchematic={handleExportSchematic}
+            calculations={project.calculations}
             project={project}
-            onUpdateProject={handleUpdateProject}
-            onClose={() => setShowElectricalPanel(false)}
           />
-        )}
+          
+          {showPlanAnalysis && (
+            <PlanAnalysisPanel
+              backgroundImage={project.backgroundImage}
+              onAnalysisComplete={handleAnalysisComplete}
+              onToggleElementVisibility={handleToggleElementVisibility}
+              analysisResult={planAnalysisResult}
+            />
+          )}
 
-        {showQuoteGenerator && (
-          <QuoteGenerator
-            project={project}
-            onClose={() => setShowQuoteGenerator(false)}
-          />
-        )}
+          {showSearch && (
+            <SearchPanel
+              project={project}
+              onElementFound={handleElementFound}
+              onClose={() => setShowSearch(false)}
+            />
+          )}
+        </div>
       </div>
-    </DndProvider>
-  );
+
+      {showSettings && (
+        <SettingsPanel
+          settings={project.settings || {
+            selectedWallSeries: {},
+            selectedModularSeries: {}
+          }}
+          onSettingsChange={handleSettingsChange}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showProjectManager && (
+        <ProjectManager
+          onLoadProject={handleLoadProject}
+          onClose={() => setShowProjectManager(false)}
+          currentProject={project}
+        />
+      )}
+
+      {showPlanTemplates && (
+        <PlanTemplates
+          onSelectTemplate={handleSelectTemplate}
+          onClose={() => setShowPlanTemplates(false)}
+        />
+      )}
+
+      {showElectricalPanel && (
+        <ElectricalPanel
+          project={project}
+          onUpdateProject={handleUpdateProject}
+          onClose={() => setShowElectricalPanel(false)}
+        />
+      )}
+
+      {showQuoteGenerator && (
+        <QuoteGenerator
+          project={project}
+          onClose={() => setShowQuoteGenerator(false)}
+        />
+      )}
+    </div>
+  </DndProvider>
+);
 }
 
 export default App;

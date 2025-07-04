@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { Project, ExportOptions } from '../types/electrical';
 import ImportExportDialog from './ImportExportDialog';
+import AdvancedExportDialog from './AdvancedExportDialog';
+import { ImportResult } from '../utils/importExportManager';
 
 interface HeaderProps {
   project: Project;
@@ -38,6 +40,8 @@ interface HeaderProps {
   onOpenPlanTemplates?: () => void;
   onOpenElectricalPanel?: () => void;
   onOpenQuoteGenerator?: () => void;
+  // AJOUT : Nouvelle prop pour recevoir les données d'import avancé
+  onAdvancedImportComplete?: (imageData: string) => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -56,11 +60,13 @@ const Header: React.FC<HeaderProps> = ({
   onOpenSearch,
   onOpenPlanTemplates,
   onOpenElectricalPanel,
-  onOpenQuoteGenerator
+  onOpenQuoteGenerator,
+  onAdvancedImportComplete // AJOUT
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportExportDialog, setShowImportExportDialog] = useState(false);
+  const [showAdvancedExportDialog, setShowAdvancedExportDialog] = useState(false);
   const [importExportMode, setImportExportMode] = useState<'import' | 'export'>('import');
   const [exportOptions, setExportOptions] = useState<ExportOptions>({
     format: 'pdf',
@@ -93,23 +99,35 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const handleAdvancedExport = () => {
-    setImportExportMode('export');
-    setShowImportExportDialog(true);
+    setShowAdvancedExportDialog(true);
   };
 
-  const handleImportComplete = (result: any) => {
-    if (result.success && result.data) {
-      // Handle the imported data
+  // CORRECTION : Fonction qui transmet les données à App.tsx
+  const handleImportComplete = (result: ImportResult) => {
+    console.log('Import completed:', result);
+    
+    if (result.success && result.data && onAdvancedImportComplete) {
+      let imageData: string;
+      
       if (typeof result.data === 'string') {
         // Single image
-        const updatedProject = { ...project, backgroundImage: result.data };
-        // You might want to call a callback here to update the project
-        console.log('Import completed:', result);
+        imageData = result.data;
       } else if (Array.isArray(result.data)) {
         // Multiple pages - use first page as background
-        const updatedProject = { ...project, backgroundImage: result.data[0] };
-        console.log('Multi-page import completed:', result);
+        imageData = result.data[0];
+      } else {
+        console.error('Format de données non reconnu:', result.data);
+        return;
       }
+      
+      console.log('Transmission des données d\'import à App.tsx...');
+      onAdvancedImportComplete(imageData);
+    } else {
+      console.error('Import failed or missing callback:', { 
+        success: result.success, 
+        hasData: !!result.data, 
+        hasCallback: !!onAdvancedImportComplete 
+      });
     }
   };
 
@@ -424,6 +442,14 @@ const Header: React.FC<HeaderProps> = ({
         mode={importExportMode}
         project={project}
         onImportComplete={handleImportComplete}
+        canvasElement={document.querySelector('.konvajs-content')?.parentElement as HTMLElement}
+      />
+
+      {/* Advanced Export Dialog */}
+      <AdvancedExportDialog
+        isOpen={showAdvancedExportDialog}
+        onClose={() => setShowAdvancedExportDialog(false)}
+        project={project}
         canvasElement={document.querySelector('.konvajs-content')?.parentElement as HTMLElement}
       />
     </>
