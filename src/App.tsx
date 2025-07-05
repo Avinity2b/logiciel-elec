@@ -5,7 +5,7 @@ import Header from './components/Header';
 import NewToolbar from './components/NewToolbar';
 import Canvas from './components/Canvas';
 import PropertiesPanel from './components/PropertiesPanel';
-import PlanAnalysisPanel from './components/PlanAnalysisPanel';
+import PlanAnalysisPanel from './components/PlanAnalysisPanel'; // Gardé pour éviter les erreurs
 import SettingsPanel from './components/SettingsPanel';
 import StatusBar from './components/StatusBar';
 import ProjectManager from './components/ProjectManager';
@@ -15,7 +15,7 @@ import ElectricalPanel from './components/ElectricalPanel';
 import QuoteGenerator from './components/QuoteGenerator';
 import ExportZoneSelector from './components/ExportZoneSelector';
 import { ElectricalElement, Circuit, Project, Connection, ExportOptions } from './types/electrical';
-import { PlanAnalysisResult } from './types/architectural';
+import { PlanAnalysisResult } from './types/architectural'; // Gardé pour éviter les erreurs
 import { ProjectSettings } from './types/equipment';
 import { calculateCircuits } from './utils/nfc15100';
 import { generateSchematic } from './utils/schematicGenerator';
@@ -44,22 +44,17 @@ function App() {
   const [selectedElements, setSelectedElements] = useState<ElectricalElement[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
-  const [planAnalysisResult, setPlanAnalysisResult] = useState<PlanAnalysisResult | null>(null);
-  const [showPlanAnalysis, setShowPlanAnalysis] = useState(false);
+  const [planAnalysisResult, setPlanAnalysisResult] = useState<PlanAnalysisResult | null>(null); // Gardé pour éviter les erreurs
+  const [showPlanAnalysis, setShowPlanAnalysis] = useState(false); // Toujours false maintenant
   const [showSettings, setShowSettings] = useState(false);
-  const [showConnections, setShowConnections] = useState(true); // ✅ Actif par défaut
+  const [showConnections, setShowConnections] = useState(true);
   const [showProjectManager, setShowProjectManager] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showPlanTemplates, setShowPlanTemplates] = useState(false);
   const [showElectricalPanel, setShowElectricalPanel] = useState(false);
   const [showQuoteGenerator, setShowQuoteGenerator] = useState(false);
   const [showExportZone, setShowExportZone] = useState(false);
-  const [exportZone, setExportZone] = useState<any>(null);
-
-  // Expose stageRef globally for export functionality
-  React.useEffect(() => {
-    (window as any).stageRef = stageRef;
-  }, []);
+  const [exportZone, setExportZone] = useState({ x: 0, y: 0, width: 800, height: 600 });
 
   const handleAddElement = useCallback((element: ElectricalElement) => {
     setProject(prev => ({
@@ -82,7 +77,7 @@ function App() {
       ...prev,
       elements: prev.elements.filter(el => !ids.includes(el.id)),
       connections: prev.connections.filter(conn => 
-        !ids.includes(conn.from) && !ids.includes(conn.to)
+        !ids.includes(conn.fromId) && !ids.includes(conn.toId)
       )
     }));
     setSelectedElements([]);
@@ -102,356 +97,277 @@ function App() {
     }));
   }, []);
 
+  const handleImportPlan = useCallback(async (file: File) => {
+    try {
+      const result = await importExportManager.importFile(file);
+      
+      if (result.success && result.data) {
+        if (typeof result.data === 'string') {
+          setProject(prev => ({
+            ...prev,
+            backgroundImage: result.data as string
+          }));
+        } else if (Array.isArray(result.data)) {
+          setProject(prev => ({
+            ...prev,
+            backgroundImage: result.data[0]
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Erreur import:', error);
+      alert('Erreur lors de l\'import du fichier');
+    }
+  }, []);
+
+  const handleAdvancedImportComplete = useCallback((imageData: string) => {
+    setProject(prev => ({
+      ...prev,
+      backgroundImage: imageData
+    }));
+  }, []);
+
+  const handleExportProject = useCallback(async (format: 'json' | 'pdf' | 'csv') => {
+    try {
+      await exportProject(project, format);
+    } catch (error) {
+      console.error('Erreur export:', error);
+      alert('Erreur lors de l\'export');
+    }
+  }, [project]);
+
+  const handleExportPlan = useCallback(async (options: ExportOptions) => {
+    if (!stageRef.current) return;
+    
+    try {
+      const settings: ExportSettings = {
+        format: options.format === 'pdf' ? 'pdf' : 'png',
+        quality: 300,
+        area: options.elements === 'selection' ? exportZone : undefined,
+        includeBackground: true,
+        includeConnections: options.showConnections
+      };
+
+      await exportPlan(stageRef.current, project, settings);
+    } catch (error) {
+      console.error('Erreur export plan:', error);
+      alert('Erreur lors de l\'export du plan');
+    }
+  }, [project, exportZone]);
+
   const handleCalculateCircuits = useCallback(async () => {
     setIsCalculating(true);
     try {
       const calculations = await calculateCircuits(project.elements, project.settings);
-      setProject(prev => ({
-        ...prev,
-        calculations
-      }));
+      setProject(prev => ({ ...prev, calculations }));
       
+      // Suggestions IA basées sur les calculs
       const suggestions = [
-        "Regrouper les spots de la cuisine sur un circuit dédié",
-        "Optimiser les connexions interrupteur-éclairage pour réduire le câblage",
-        "Considérer l'ajout de variateurs pour les appliques"
+        `${calculations.circuits.length} circuits calculés`,
+        `Puissance totale: ${calculations.totalPower.toFixed(0)}W`,
+        calculations.compliance.isCompliant 
+          ? 'Installation conforme NF C 15-100' 
+          : 'Vérifiez la conformité NF C 15-100'
       ];
-      setAiSuggestions(suggestions);
+      setAiSuggestions(prev => [...prev, ...suggestions]);
     } catch (error) {
-      console.error('Erreur lors du calcul:', error);
+      console.error('Erreur calcul:', error);
+      alert('Erreur lors du calcul des circuits');
     } finally {
       setIsCalculating(false);
     }
   }, [project.elements, project.settings]);
 
   const handleExportSchematic = useCallback(async () => {
-    if (project.calculations) {
-      await generateSchematic(project);
+    try {
+      const schematic = generateSchematic(project);
+      // Logique d'export du schéma
+      console.log('Schéma généré:', schematic);
+    } catch (error) {
+      console.error('Erreur génération schéma:', error);
     }
   }, [project]);
 
-  const handleExportProject = useCallback(async (format: 'json' | 'pdf' | 'csv') => {
-    await exportProject(project, format);
-  }, [project]);
+  // Gardé pour éviter les erreurs mais ne fait rien
+  const handleAnalysisComplete = useCallback((result: PlanAnalysisResult) => {
+    console.log('Analyse terminée (désactivée):', result);
+    // Ne fait rien - fonctionnalité désactivée
+  }, []);
 
-  const handleExportPlan = useCallback(async (options: ExportOptions) => {
-    const canvasContainer = document.querySelector('.konvajs-content')?.parentElement;
-    if (canvasContainer) {
-      const settings: ExportSettings = {
-        ...options,
-        zone: exportZone,
-        paperFormat: 'A4',
-        orientation: 'landscape',
-        action: 'download'
-      };
-      await exportPlan(project, settings, canvasContainer as HTMLElement);
-    } else {
-      alert('Impossible de trouver le canvas pour l\'export');
+  // Gardé pour éviter les erreurs mais ne fait rien
+  const handleToggleElementVisibility = useCallback((elementType: string, visible: boolean) => {
+    console.log(`Toggle ${elementType} visibility: ${visible} (désactivé)`);
+    // Ne fait rien - fonctionnalité désactivée
+  }, []);
+
+  const handleSettingsChange = useCallback((settings: ProjectSettings) => {
+    setProject(prev => ({
+      ...prev,
+      settings
+    }));
+  }, []);
+
+  const handleToggleConnections = useCallback(() => {
+    setShowConnections(prev => !prev);
+  }, []);
+
+  const handleLoadProject = useCallback((loadedProject: Project) => {
+    setProject(loadedProject);
+    setSelectedElements([]);
+    setAiSuggestions([]);
+    setPlanAnalysisResult(null);
+  }, []);
+
+  const handleElementFound = useCallback((elementId: string) => {
+    const element = project.elements.find(el => el.id === elementId);
+    if (element) {
+      setSelectedElements([element]);
+      // Center view on element (would need canvas reference)
+      // For now, just select it
     }
-  }, [project, exportZone]);
+  }, [project.elements]);
 
-  const handleImportPlan = useCallback(async (file: File) => {
-  const fileType = file.type;
-  const fileName = file.name.toLowerCase();
-  
-  if (fileType.startsWith('image/') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png') || fileName.endsWith('.gif') || fileName.endsWith('.bmp') || fileName.endsWith('.webp')) {
-    // Import direct des images
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setProject(prev => ({
-        ...prev,
-        backgroundImage: result
-      }));
-      setShowPlanAnalysis(true);
-    };
-    reader.readAsDataURL(file);
-  } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-    // Utiliser le vrai système d'import PDF
-    await handlePDFImport(file);
-  } else if (fileName.endsWith('.dwg')) {
-    alert('Les fichiers DWG ne sont pas encore supportés. Veuillez convertir votre fichier en PDF ou image.');
-  } else {
-    alert('Format de fichier non supporté. Formats acceptés: PDF, JPG, PNG, GIF, BMP, WebP, DWG');
-  }
-}, []);
+  const handleSelectTemplate = useCallback((templateProject: Project) => {
+    setProject(templateProject);
+    setSelectedElements([]);
+    setAiSuggestions([]);
+    setPlanAnalysisResult(null);
+  }, []);
 
-  const handlePDFImport = useCallback(async (file: File) => {
-  try {
-    setIsCalculating(true); // Montrer le loader
-    
-    // Options d'import pour PDF
-    const importOptions = {
-      format: 'pdf' as const,
-      quality: 'medium' as const,
-      maxSize: 50, // 50MB max
-      autoResize: true,
-      targetWidth: 1920,
-      targetHeight: 1080
-    };
+  const handleUpdateProject = useCallback((updatedProject: Project) => {
+    setProject(updatedProject);
+  }, []);
 
-    // Utiliser l'ImportExportManager pour traiter le PDF
-    const result = await importExportManager.importFile(file, importOptions);
-    
-    if (result.success && result.data) {
-      // Si c'est un PDF multi-pages, prendre la première page
-      const imageData = Array.isArray(result.data) ? result.data[0] : result.data;
-      
-      setProject(prev => ({
-        ...prev,
-        backgroundImage: imageData
-      }));
-      setShowPlanAnalysis(true);
-      
-      // Afficher un message de succès
-      alert(`PDF importé avec succès ! ${result.metadata?.pageCount ? `(${result.metadata.pageCount} page(s) trouvée(s), première page utilisée)` : ''}`);
-    } else {
-      throw new Error(result.error || 'Erreur inconnue lors de l\'import PDF');
-    }
-    
-  } catch (error) {
-    console.error('Erreur lors de l\'importation du PDF:', error);
-    
-    // Fallback vers l'ancienne méthode en cas d'erreur
-    const shouldUseFallback = confirm(
-      `Erreur lors de l'import PDF automatique: ${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n` +
-      'Voulez-vous utiliser un placeholder temporaire ? (Sinon, veuillez convertir votre PDF en image JPG/PNG)'
-    );
-    
-    if (shouldUseFallback) {
-      // Créer un placeholder
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      canvas.width = 800;
-      canvas.height = 600;
-      if (ctx) {
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <div className="h-screen bg-gray-900 text-white flex flex-col">
+        <Header 
+          project={project}
+          onImportPlan={handleImportPlan}
+          onExportProject={handleExportProject}
+          onCalculateCircuits={handleCalculateCircuits}
+          isCalculating={isCalculating}
+          onTogglePlanAnalysis={() => {}} // Fonction vide - bouton supprimé
+          showPlanAnalysis={false} // Toujours false
+          onOpenSettings={() => setShowSettings(true)}
+          onToggleConnections={handleToggleConnections}
+          showConnections={showConnections}
+          onExportPlan={handleExportPlan}
+          onOpenProjectManager={() => setShowProjectManager(true)}
+          onOpenSearch={() => setShowSearch(true)}
+          onOpenPlanTemplates={() => setShowPlanTemplates(true)}
+          onOpenElectricalPanel={() => setShowElectricalPanel(true)}
+          onOpenQuoteGenerator={() => setShowQuoteGenerator(true)}
+          onAdvancedImportComplete={handleAdvancedImportComplete}
+        />
         
-        ctx.fillStyle = '#666';
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Plan PDF (placeholder)', canvas.width / 2, canvas.height / 2 - 20);
-        ctx.font = '14px Arial';
-        ctx.fillText('Convertissez votre PDF en image pour un meilleur rendu', canvas.width / 2, canvas.height / 2 + 10);
-        ctx.fillText(`Fichier: ${file.name}`, canvas.width / 2, canvas.height / 2 + 30);
-      }
-      
-      const dataUrl = canvas.toDataURL('image/png');
-      setProject(prev => ({
-        ...prev,
-        backgroundImage: dataUrl
-      }));
-      setShowPlanAnalysis(true);
-    }
-  } finally {
-    setIsCalculating(false); // Cacher le loader
-  }
-}, []);
-
-  // AJOUT : Gestionnaire pour l'import avancé depuis Header
-  const handleAdvancedImportComplete = useCallback((imageData: string) => {
-    console.log('=== IMPORT AVANCÉ DANS APP.tsx ===');
-    console.log('Réception des données d\'image...');
-    
-    setProject(prev => {
-      const updatedProject = {
-        ...prev,
-        backgroundImage: imageData
-      };
-      console.log('Projet mis à jour avec backgroundImage');
-      return updatedProject;
-    });
-    
-    // Activer l'analyse du plan
-  setShowPlanAnalysis(true);
-  console.log('Analyse du plan activée');
-}, []);
-
-const handleAnalysisComplete = useCallback((result: PlanAnalysisResult) => {
-  setPlanAnalysisResult(result);
-  
-  const analysisBasedSuggestions = [
-    `${result.rooms.length} pièces détectées - Vérifier les besoins électriques`,
-    `${result.doors.length} portes identifiées - Prévoir l'éclairage des passages`,
-    `Analyse terminée avec ${Math.round(result.confidence)}% de confiance`
-  ];
-  
-  setAiSuggestions(prev => [...prev, ...analysisBasedSuggestions]);
-}, []);
-
-const handleToggleElementVisibility = useCallback((elementType: string, visible: boolean) => {
-  console.log(`Toggle ${elementType} visibility: ${visible}`);
-}, []);
-
-const handleSettingsChange = useCallback((settings: ProjectSettings) => {
-  setProject(prev => ({
-    ...prev,
-    settings
-  }));
-}, []);
-
-const handleToggleConnections = useCallback(() => {
-  setShowConnections(prev => !prev);
-}, []);
-
-const handleLoadProject = useCallback((loadedProject: Project) => {
-  setProject(loadedProject);
-  setSelectedElements([]);
-  setAiSuggestions([]);
-  setPlanAnalysisResult(null);
-}, []);
-
-const handleElementFound = useCallback((elementId: string) => {
-  const element = project.elements.find(el => el.id === elementId);
-  if (element) {
-    setSelectedElements([element]);
-    // Center view on element (would need canvas reference)
-    // For now, just select it
-  }
-}, [project.elements]);
-
-const handleSelectTemplate = useCallback((templateProject: Project) => {
-  setProject(templateProject);
-  setSelectedElements([]);
-  setAiSuggestions([]);
-  setPlanAnalysisResult(null);
-}, []);
-
-const handleUpdateProject = useCallback((updatedProject: Project) => {
-  setProject(updatedProject);
-}, []);
-
-return (
-  <DndProvider backend={HTML5Backend}>
-    <div className="h-screen bg-gray-900 text-white flex flex-col">
-      <Header 
-        project={project}
-        onImportPlan={handleImportPlan}
-        onExportProject={handleExportProject}
-        onCalculateCircuits={handleCalculateCircuits}
-        isCalculating={isCalculating}
-        onTogglePlanAnalysis={() => setShowPlanAnalysis(!showPlanAnalysis)}
-        showPlanAnalysis={showPlanAnalysis}
-        onOpenSettings={() => setShowSettings(true)}
-        onToggleConnections={handleToggleConnections}
-        showConnections={showConnections}
-        onExportPlan={handleExportPlan}
-        onOpenProjectManager={() => setShowProjectManager(true)}
-        onOpenSearch={() => setShowSearch(true)}
-        onOpenPlanTemplates={() => setShowPlanTemplates(true)}
-        onOpenElectricalPanel={() => setShowElectricalPanel(true)}
-        onOpenQuoteGenerator={() => setShowQuoteGenerator(true)}
-        onAdvancedImportComplete={handleAdvancedImportComplete}
-      />
-      
-      <div className="flex-1 flex overflow-hidden">
-        <NewToolbar onAddElement={handleAddElement} />
-        
-        <div className="flex-1 flex flex-col relative">
-          <Canvas
-            ref={stageRef}
-            project={project}
-            selectedElements={selectedElements}
-            onSelectElements={setSelectedElements}
-            onUpdateElement={handleUpdateElement}
-            onDeleteElements={handleDeleteElements}
-            onAddElement={handleAddElement}
-            onAddConnection={handleAddConnection}
-            onDeleteConnection={handleDeleteConnection}
-            planAnalysisResult={planAnalysisResult}
-            showConnections={showConnections}
-          />
+        <div className="flex-1 flex overflow-hidden">
+          <NewToolbar onAddElement={handleAddElement} />
           
-          {showExportZone && (
-            <ExportZoneSelector
-              canvasWidth={800}
-              canvasHeight={600}
-              onZoneChange={setExportZone}
-              initialZone={exportZone}
-            />
-          )}
-          
-          <StatusBar 
-            elementCount={project.elements.length}
-            circuitCount={project.circuits.length}
-            connectionCount={project.connections.length}
-            aiSuggestions={aiSuggestions}
-          />
-        </div>
-        
-        <div className="flex">
-          <PropertiesPanel
-            selectedElements={selectedElements}
-            onUpdateElement={handleUpdateElement}
-            onExportSchematic={handleExportSchematic}
-            calculations={project.calculations}
-            project={project}
-          />
-          
-          {showPlanAnalysis && (
-            <PlanAnalysisPanel
-              backgroundImage={project.backgroundImage}
-              onAnalysisComplete={handleAnalysisComplete}
-              onToggleElementVisibility={handleToggleElementVisibility}
-              analysisResult={planAnalysisResult}
-            />
-          )}
-
-          {showSearch && (
-            <SearchPanel
+          <div className="flex-1 flex flex-col relative">
+            <Canvas
+              ref={stageRef}
               project={project}
-              onElementFound={handleElementFound}
-              onClose={() => setShowSearch(false)}
+              selectedElements={selectedElements}
+              onSelectElements={setSelectedElements}
+              onUpdateElement={handleUpdateElement}
+              onDeleteElements={handleDeleteElements}
+              onAddElement={handleAddElement}
+              onAddConnection={handleAddConnection}
+              onDeleteConnection={handleDeleteConnection}
+              planAnalysisResult={planAnalysisResult}
+              showConnections={showConnections}
             />
-          )}
+            
+            {showExportZone && (
+              <ExportZoneSelector
+                canvasWidth={800}
+                canvasHeight={600}
+                onZoneChange={setExportZone}
+                initialZone={exportZone}
+              />
+            )}
+            
+            <StatusBar 
+              elementCount={project.elements.length}
+              circuitCount={project.circuits.length}
+              connectionCount={project.connections.length}
+              aiSuggestions={aiSuggestions}
+            />
+          </div>
+          
+          <div className="flex">
+            <PropertiesPanel
+              selectedElements={selectedElements}
+              onUpdateElement={handleUpdateElement}
+              onExportSchematic={handleExportSchematic}
+              calculations={project.calculations}
+              project={project}
+            />
+            
+            {/* MASQUÉ: Le PlanAnalysisPanel n'apparaît jamais car showPlanAnalysis est toujours false */}
+            {false && showPlanAnalysis && (
+              <PlanAnalysisPanel
+                backgroundImage={project.backgroundImage}
+                onAnalysisComplete={handleAnalysisComplete}
+                onToggleElementVisibility={handleToggleElementVisibility}
+                analysisResult={planAnalysisResult}
+              />
+            )}
+
+            {showSearch && (
+              <SearchPanel
+                project={project}
+                onElementFound={handleElementFound}
+                onClose={() => setShowSearch(false)}
+              />
+            )}
+          </div>
         </div>
+
+        {showSettings && (
+          <SettingsPanel
+            settings={project.settings || {
+              selectedWallSeries: {},
+              selectedModularSeries: {}
+            }}
+            onSettingsChange={handleSettingsChange}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+
+        {showProjectManager && (
+          <ProjectManager
+            onLoadProject={handleLoadProject}
+            onClose={() => setShowProjectManager(false)}
+            currentProject={project}
+          />
+        )}
+
+        {showPlanTemplates && (
+          <PlanTemplates
+            onSelectTemplate={handleSelectTemplate}
+            onClose={() => setShowPlanTemplates(false)}
+          />
+        )}
+
+        {showElectricalPanel && (
+          <ElectricalPanel
+            project={project}
+            onUpdateProject={handleUpdateProject}
+            onClose={() => setShowElectricalPanel(false)}
+          />
+        )}
+
+        {showQuoteGenerator && (
+          <QuoteGenerator
+            project={project}
+            onClose={() => setShowQuoteGenerator(false)}
+          />
+        )}
       </div>
-
-      {showSettings && (
-        <SettingsPanel
-          settings={project.settings || {
-            selectedWallSeries: {},
-            selectedModularSeries: {}
-          }}
-          onSettingsChange={handleSettingsChange}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-
-      {showProjectManager && (
-        <ProjectManager
-          onLoadProject={handleLoadProject}
-          onClose={() => setShowProjectManager(false)}
-          currentProject={project}
-        />
-      )}
-
-      {showPlanTemplates && (
-        <PlanTemplates
-          onSelectTemplate={handleSelectTemplate}
-          onClose={() => setShowPlanTemplates(false)}
-        />
-      )}
-
-      {showElectricalPanel && (
-        <ElectricalPanel
-          project={project}
-          onUpdateProject={handleUpdateProject}
-          onClose={() => setShowElectricalPanel(false)}
-        />
-      )}
-
-      {showQuoteGenerator && (
-        <QuoteGenerator
-          project={project}
-          onClose={() => setShowQuoteGenerator(false)}
-        />
-      )}
-    </div>
-  </DndProvider>
-);
+    </DndProvider>
+  );
 }
 
 export default App;
