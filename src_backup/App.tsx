@@ -1,41 +1,32 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { NotificationContainer } from './shared/components/ui/NotificationContainer';
-
-// Legacy imports (transition)
-import Header from './legacy/components/Header';
-import NewToolbar from './legacy/components/NewToolbar';
-import Canvas from './legacy/components/Canvas';
-import PropertiesPanel from './legacy/components/PropertiesPanel';
-import SettingsPanel from './legacy/components/SettingsPanel';
-import StatusBar from './legacy/components/StatusBar';
-import ProjectManager from './legacy/components/ProjectManager';
-import SearchPanel from './legacy/components/SearchPanel';
-import PlanTemplates from './legacy/components/PlanTemplates';
-import ElectricalPanel from './legacy/components/ElectricalPanel';
-import QuoteGenerator from './legacy/components/QuoteGenerator';
-import ExportZoneSelector from './legacy/components/ExportZoneSelector';
-import { ElectricalElement, Circuit, Project, Connection, ExportOptions } from './core/types';
-// Legacy utils
-import { calculateCircuits } from './legacy/utils/nfc15100';
-import { generateSchematic } from './legacy/utils/schematicGenerator';
-import { exportProject } from './legacy/utils/exportUtils';
-import { exportPlan } from './legacy/utils/planExporter';
-import { ImportExportManager } from './legacy/utils/importExportManager';
-// import { serviceManager } from './shared/services';
-import { serviceManager } from './shared/services/ServiceManager';
+import Header from './components/Header';
+import NewToolbar from './components/NewToolbar';
+import Canvas from './components/Canvas';
+import PropertiesPanel from './components/PropertiesPanel';
+import PlanAnalysisPanel from './components/PlanAnalysisPanel'; // Gardé pour éviter les erreurs
+import SettingsPanel from './components/SettingsPanel';
+import StatusBar from './components/StatusBar';
+import ProjectManager from './components/ProjectManager';
+import SearchPanel from './components/SearchPanel';
+import PlanTemplates from './components/PlanTemplates';
+import ElectricalPanel from './components/ElectricalPanel';
+import QuoteGenerator from './components/QuoteGenerator';
+import ExportZoneSelector from './components/ExportZoneSelector';
+import { ElectricalElement, Circuit, Project, Connection, ExportOptions } from './types/electrical';
+import { PlanAnalysisResult } from './types/architectural'; // Gardé pour éviter les erreurs
+import { ProjectSettings } from './types/equipment';
+import { calculateCircuits } from './utils/nfc15100';
+import { generateSchematic } from './utils/schematicGenerator';
+import { exportProject } from './utils/exportUtils';
+import { exportPlan, ExportSettings } from './utils/planExporter';
+import { ImportExportManager } from './utils/importExportManager';
 const importExportManager = ImportExportManager.getInstance();
 
-// Exposer serviceManager globalement pour debug
-if (typeof window !== 'undefined') {
-  (window as any).serviceManager = serviceManager;
-}
 function App() {
   const stageRef = useRef<any>(null);
-
-  const [isAppReady, setIsAppReady] = useState(false);
-
+  
   const [project, setProject] = useState<Project>({
     id: 'new-project',
     name: 'Nouveau Projet',
@@ -64,27 +55,6 @@ function App() {
   const [showQuoteGenerator, setShowQuoteGenerator] = useState(false);
   const [showExportZone, setShowExportZone] = useState(false);
   const [exportZone, setExportZone] = useState({ x: 0, y: 0, width: 800, height: 600 });
-
-   useEffect(() => {
-  const initializeApp = async () => {
-    try {
-      console.log('🚀 Initializing ElectriCAD AI...');
-      
-      // Test simple sans serviceManager
-      console.log('✅ Application fully initialized');
-      setIsAppReady(true);
-      
-      // Test des notifications après 2 secondes
-      setTimeout(() => {
-        console.log('🟢 SUCCESS: Test Migration - La nouvelle architecture fonctionne ! 🎉');
-      }, 2000);
-      
-    } catch (error) {
-      console.error('❌ Failed to initialize app:', error);
-    }
-  };
-  initializeApp();
-}, []);
 
   const handleAddElement = useCallback((element: ElectricalElement) => {
     setProject(prev => ({
@@ -396,9 +366,6 @@ function App() {
           />
         )}
       </div>
-      
-      {/* Système de notifications */}
-      <NotificationContainer />
     </DndProvider>
   );
 }
